@@ -48,7 +48,7 @@ Dateien auf dem Uyuni-Server ablegen:
 Kopieren Sie die Salt-State-Dateien (.sls) in das Verzeichnis `/srv/salt/` des Salt-Masters. Erstellen Sie das Verzeichnis `/srv/salt/veeam/files/` und legen Sie dort die Skripte ab.
 
 State zuweisen:
-Weisen Sie die States `veeam_consistency` and `veeam_log_cleanup` in der Uyuni-Weboberfläche der gewünschten Systemgruppe (z. B. grp_db_backup_veeam) zu.
+Weisen Sie die States `veeam_consistency` and `veeam_log_cleanup` in der Uyuni-Weboberfläche der gewünschten Systemgruppe (z. B. `grp_db_backup_veeam`) zu.
 
 Änderungen anwenden:
 Führen Sie die Aktion Apply Actions in Uyuni aus, um die Konfiguration parallel auf allen VMs anzuwenden.
@@ -60,6 +60,6 @@ Legen Sie die folgenden Dateien gemäß der beschriebenen Ordnerstruktur in Ihre
 #### Datei 1: `salt/veeam_consistency.sls`
 *Zielpfad auf dem Uyuni-Server:* `/srv/salt/veeam_consistency.sls`
 
-#### Datei 2: files/pre-freeze-script.sh
+#### Datei 2: `files/pre-freeze-script.sh`
 *Zielpfad auf der Ziel-VM:* `/usr/sbin/pre-freeze-script`
 

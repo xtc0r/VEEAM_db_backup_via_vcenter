@@ -43,7 +43,7 @@ Die Bereitstellung und Wartung auf allen Linux-VMs erfolgt vollautomatisch über
 ---
 ```
 
-## Bereitstellung via Uyuni
+## 4. Bereitstellung via Uyuni
 Dateien auf dem Uyuni-Server ablegen:
 Kopieren Sie die Salt-State-Dateien (.sls) in das Verzeichnis `/srv/salt/` des Salt-Masters. Erstellen Sie das Verzeichnis `/srv/salt/veeam/files/` und legen Sie dort die Skripte ab.
 

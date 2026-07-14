@@ -29,7 +29,7 @@ Da das Backup out-of-band über Speicher-Snapshots erfolgt und Veeam keinen dire
 
 ## 3. Struktur des Repositories
 
-Die Bereitstellung und Wartung auf allen 500 Linux-VMs erfolgt vollautomatisch über **Uyuni (SaltStack)**.
+Die Bereitstellung und Wartung auf allen Linux-VMs erfolgt vollautomatisch über **Uyuni (SaltStack)**.
 
 ```text
 .
@@ -40,3 +40,24 @@ Die Bereitstellung und Wartung auf allen 500 Linux-VMs erfolgt vollautomatisch �
     ├── pre-freeze-script          # VMware Tools Skript vor dem Snapshot
     ├── post-thaw-script           # VMware Tools Skript nach dem Snapshot
     └── db_log_cleanup.sh          # Universelles Log-Bereinigungsskript (Cron)
+---
+```
+
+## Bereitstellung via Uyuni
+Dateien auf dem Uyuni-Server ablegen:
+Kopieren Sie die Salt-State-Dateien (.sls) in das Verzeichnis `/srv/salt/` des Salt-Masters. Erstellen Sie das Verzeichnis `/srv/salt/veeam/files/` und legen Sie dort die Skripte ab.
+
+State zuweisen:
+Weisen Sie die States `veeam_consistency` and `veeam_log_cleanup` in der Uyuni-Weboberfläche der gewünschten Systemgruppe (z. B. grp_db_backup_veeam) zu.
+
+Änderungen anwenden:
+Führen Sie die Aktion Apply Actions in Uyuni aus, um die Konfiguration parallel auf allen VMs anzuwenden.
+
+### 2. Die Skripte einzeln zur Ablage im Repository
+
+Legen Sie die folgenden Dateien gemäß der beschriebenen Ordnerstruktur in Ihrem Git-Repository oder direkt auf dem Uyuni-Server (Salt-Master) unter `/srv/salt/` an.
+
+#### Datei 1: `salt/veeam_consistency.sls`
+*Zielpfad auf dem Uyuni-Server:* `/srv/salt/veeam_consistency.sls`
+
+

@@ -72,7 +72,7 @@ Das Backup erfolgt **out-of-band** über Speicher-Snapshots — Veeam hat keinen
 |---|---|---|---|
 | **`pre-freeze-script`** | Datenbank in konsistenten Zustand versetzen | VMware Tools vor dem Snapshot (als root) | Application-consistentes Backup |
 | **`post-thaw-script`** | Datenbank-Locks freigeben | VMware Tools nach dem Snapshot (als root) | Keine blockierten Datenbankverbindungen |
-| **`db_log_cleanup.sh`** | Transaktionslogs begrenzen | System-Cron (täglich 01:00) | Festplatten vor Überlauf schützen |
+| **`db_log_cleanup.sh`** | Transaktionslogs begrenzen | System-Cron (gestaffelt 01:00–03:59) | Festplatten vor Überlauf schützen |
 
 ### 2.3 Datenfluss: Ein Backup-Durchlauf
 

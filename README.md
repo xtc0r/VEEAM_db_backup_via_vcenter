@@ -2,37 +2,128 @@
 
 Dieses Repository enthält die Salt-States für **Uyuni (SaltStack)** und die lokalen Skripte zur Implementierung einer hochsicheren, performanten und vollständig automatisierten Backup-Architektur für Linux-VMs mit relationalen Datenbanken (**MariaDB/MySQL, PostgreSQL, MS SQL Server**).
 
-## 1. Architektur und Design-Entscheidungen
+---
 
-Bei einer Infrastruktur mit geschäftskritischen Datenbanken müssen klassische Backup-Konzepte überdacht werden. Das hier implementierte Design löst zwei fundamentale Konflikte:
+## 1. Die Herausforderung
+
+Klassische Backup-Konzepte stoßen bei geschäftskritischen Datenbanken an zwei fundamentale Grenzen:
 
 ### Konflikt A: Sicherheit vs. Offene Netzwerkports (Lateral Movement)
-- **Problem:** Herkömmliche agentenbasierte Backups erfordern entweder die Speicherung administrativer Zugangsdaten auf dem zentralen Veeam-Server (Sicherheitsrisiko bei Kompromittierung des Backup-Servers) oder die Öffnung von Outbound-Netzwerkports von den produktiven VMs in Richtung Backup-Infrastruktur (Risiko von Lateral Movement bei einer Kompromittierung einer produktiven VM).
-- **Lösung (Pull-Verfahren):** Vollständige Blockierung jeglichen Netzwerkverkehrs aus dem Datenbank-VLAN in das Backup-VLAN auf Firewall-Ebene. Veeam greift ausschließlich über das vCenter und die Management-Schnittstellen des Speichersystems zu. Die VMs sind netzwerktechnisch isoliert und initiieren keine Verbindungen nach außen.
+
+| | |
+|---|---|
+| **Problem** | Agentenbasierte Backups erfordern entweder die Speicherung administrativer Zugangsdaten auf dem zentralen Veeam-Server (Sicherheitsrisiko bei Kompromittierung) oder die Öffnung von Outbound-Netzwerkports von den produktiven VMs in Richtung Backup-Infrastruktur (Risiko von Lateral Movement bei einer Kompromittierung einer produktiven VM). |
+| **Lösung** | **Pull-Verfahren:** Vollständige Blockierung jeglichen Netzwerkverkehrs aus dem Datenbank-VLAN in das Backup-VLAN auf Firewall-Ebene. Veeam greift ausschließlich über das vCenter und die Management-Schnittstellen des Speichersystems zu. Die VMs sind netzwerktechnisch isoliert und initiieren keine Verbindungen nach außen. |
 
 ### Konflikt B: Datenkonsistenz vs. Latenzen im Millisekundenbereich (VM-Stun)
-- **Problem:** Das Erstellen und insbesondere das Löschen (Konsolidieren) von VMware-Snapshots führt bei schreibintensiven Datenbanken zu spürbaren Latenzeinbrüchen (dem sogenannten "VM-Stun-Effekt"). Für Echtzeit-Anwendungen mit Latenzanforderungen im Millisekundenbereich ist dies inakzeptabel.
-- **Lösung:** Einsatz von **Veeam Backup from Storage Snapshots (BfSS)**. Der VMware-Snapshot existiert nur für Bruchteile einer Sekunde. Die eigentliche Datenübertragung erfolgt hardwareseitig direkt aus dem Storage-Snapshot über das SAN an den Veeam Backup Proxy. Dieses Verfahren ist speicherunabhängig und mit allen gängigen Storage-Systemen nutzbar, die Veeam BfSS unterstützen.
+
+| | |
+|---|---|
+| **Problem** | Das Erstellen und insbesondere das Löschen (Konsolidieren) von VMware-Snapshots führt bei schreibintensiven Datenbanken zu spürbaren Latenzeinbrüchen (dem sogenannten "VM-Stun-Effekt"). Für Echtzeit-Anwendungen mit Latenzanforderungen im Millisekundenbereich ist dies inakzeptabel. |
+| **Lösung** | **Veeam Backup from Storage Snapshots (BfSS).** Der VMware-Snapshot existiert nur für Bruchteile einer Sekunde. Die Datenübertragung erfolgt hardwareseitig direkt aus dem Storage-Snapshot über das SAN an den Veeam Backup Proxy. |
 
 ---
 
-## 2. Technische Hürden & deren Lösung auf Betriebssystemebene
+## 2. Der Lösungsansatz
 
-Da das Backup out-of-band über Speicher-Snapshots erfolgt und Veeam keinen direkten Systemzugriff besitzt, ergeben sich zwei Herausforderungen auf Betriebssystemebene:
+Das Backup erfolgt **out-of-band** über Speicher-Snapshots — Veeam hat keinen direkten Systemzugriff auf die VMs. Dieses Repository stellt die Komponenten bereit, die auf den VMs selbst die beiden daraus resultierenden Probleme lösen: **Application Consistency** und **Log-Growth**.
 
-1. **Datenkonsistenz (Application Consistency):** Die Datenbanken müssen kurzzeitig in einen konsistenten Zustand versetzt werden, bevor der Snapshot erstellt wird, ohne dass Veeam Zugangsdaten benötigt.
-   - *Lösung:* Nutzung der lokalen VMware Tools Schnittstelle. Vor dem Snapshot führt der ESXi-Host über die VMware Tools die lokalen Skripte `pre-freeze-script` und `post-thaw-script` als `root` aus.
+### 2.1 Architektur-Übersicht
 
-2. **Unkontrolliertes Log-Wachstum (Log-Growth):** Da die Datenbanken keine direkte Erfolgsmeldung vom Backup-Server erhalten, werden die Transaktionsprotokolle (WAL, Binlogs, LDF) nicht automatisch bereinigt und würden die Festplatten füllen.
-   - *Lösung:* Ein täglicher, lokaler Cronjob (`db_log_cleanup.sh`), der das Log-Wachstum kontrolliert.
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         VEEAM BACKUP SERVER                             │
+│  greift zu via: vCenter + Storage Management API                        │
+└──────────────┬──────────────────────────────────────────────┬───────────┘
+               │ (kein direktes SSH/Agent auf den VMs!)       │
+               ▼                                              ▼
+┌──────────────────────────────┐          ┌──────────────────────────────┐
+│         VCENTER               │          │   HPE / STORAGE-SYSTEM       │
+│  löst VMware Snapshot aus     │          │  erstellt Storage-Snapshot   │
+│  + ruft pre-/post-freeze auf  │          │  → Daten via SAN an Proxy    │
+└──────────────┬───────────────┘          └──────────────────────────────┘
+               │
+               ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         LINUX VM (Datenbank)                            │
+│                                                                         │
+│  ┌──────────────┐    ┌──────────────────┐    ┌──────────────────────┐   │
+│  │ VMware Tools  │───▶│ pre-freeze-script│───▶│ Konsistenz sichern   │   │
+│  │ (ESXi Host)   │    │ (root)           │    │ • MySQL: FLUSH TABLES│   │
+│  │               │    │                  │    │ • PG:    CHECKPOINT  │   │
+│  │               │    │                  │    │ • MSSQL: CHECKPOINT  │   │
+│  │               │◀───│ post-thaw-script │◀───│ Locks freigeben      │   │
+│  └──────────────┘    └──────────────────┘    └──────────────────────┘   │
+│                                                                         │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │  Cron (täglich 01:00) ───▶ db_log_cleanup.sh                     │   │
+│  │    • MS SQL:   SIMPLE Recovery (LDF-Wachstum stoppen)            │   │
+│  │    • MariaDB:  PURGE BINARY LOGS (Binlogs > 3 Tage)              │   │
+│  │    • PostgreSQL: DROP REPLICATION SLOT (verwaiste WALs)          │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│  Verwaltet durch: Uyuni (SaltStack) — zentrales Deployment             │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### 2.2 Die drei Komponenten
+
+| Komponente | Zweck | Ausführung | Ziel |
+|---|---|---|---|
+| **`pre-freeze-script`** | Datenbank in konsistenten Zustand versetzen | VMware Tools vor dem Snapshot (als root) | Application-consistentes Backup |
+| **`post-thaw-script`** | Datenbank-Locks freigeben | VMware Tools nach dem Snapshot (als root) | Keine blockierten Datenbankverbindungen |
+| **`db_log_cleanup.sh`** | Transaktionslogs begrenzen | System-Cron (täglich 01:00) | Festplatten vor Überlauf schützen |
+
+### 2.3 Datenfluss: Ein Backup-Durchlauf
+
+```
+Zeit  │  Vorgang
+──────┼────────────────────────────────────────────────────────────────
+  T0  │  Veeam löst Backup-Job aus
+      │
+  T1  │  vCenter: initiiert VMware Snapshot mit Quiescing
+      │
+  T2  │  ESXi Host → VMware Tools → pre-freeze-script (root)
+      │    ├─ MariaDB:  FLUSH TABLES WITH READ LOCK (+ SLEEP 600s)
+      │    ├─ PostgreSQL: CHECKPOINT
+      │    └─ MS SQL:   CHECKPOINT (via sqlcmd)
+      │
+  T3  │  Storage-Snapshot wird erstellt (Bruchteile einer Sekunde)
+      │
+  T4  │  ESXi Host → VMware Tools → post-thaw-script (root)
+      │    └─ MariaDB:  Kill Sleep-Prozess → Lock aufgehoben
+      │
+  T5  │  Veeam Backup Proxy liest Daten aus Storage-Snapshot
+      │  VMware-Snapshot wird sofort gelöscht → kein VM-Stun
+      │
+  T6  │  Backup abgeschlossen
+```
+
+**Schlüsseleigenschaft:** Der VMware-Snapshot existiert nur zwischen T2/T3 und T4 — Sekundenbruchteile. Die gesamte Datenübertragung (T5) läuft hardwareseitig über das SAN und belastet die VM nicht.
+
+### 2.4 Log-Cleanup-Zyklus
+
+Da die VM keine Bestätigung vom Backup-Server erhält, wachsen die Datenbank-Transaktionslogs unbegrenzt. Der tägliche Cron-Job verhindert dies:
+
+```mermaid
+graph LR
+    A[Cron 01:00] --> B{MS SQL aktiv?}
+    B -->|Ja| C[ALTER DATABASE SET RECOVERY SIMPLE]
+    B -->|Nein| D{MariaDB aktiv?}
+    D -->|Ja| E[PURGE BINARY LOGS BEFORE 3 DAYS]
+    D -->|Nein| F{PostgreSQL aktiv?}
+    F -->|Ja| G[DROP verlassenen Replication Slot]
+    F -->|Nein| H[Ende]
+    C --> H
+    E --> H
+    G --> H
+```
 
 ---
 
-## 3. Struktur des Repositories
+## 3. Repository-Struktur
 
-Die Bereitstellung und Wartung auf allen Linux-VMs erfolgt vollautomatisch über **Uyuni (SaltStack)**.
-
-```text
+```
 .
 ├── salt/
 │   ├── veeam_consistency.sls      # Salt State für die Konsistenz-Skripte

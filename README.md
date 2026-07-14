@@ -56,7 +56,7 @@ Das Backup erfolgt **out-of-band** über Speicher-Snapshots — Veeam hat keinen
 │  └──────────────┘    └──────────────────┘    └──────────────────────┘   │
 │                                                                         │
 │  ┌──────────────────────────────────────────────────────────────────┐   │
-│  │  Cron (täglich 01:00) ───▶ db_log_cleanup.sh                     │   │
+│  │  Cron (gestaffelt 01:00–03:59) ───▶ db_log_cleanup.sh            │   │
 │  │    • MS SQL:   SIMPLE Recovery (LDF-Wachstum stoppen)            │   │
 │  │    • MariaDB:  PURGE BINARY LOGS (Binlogs > 3 Tage)              │   │
 │  │    • PostgreSQL: DROP REPLICATION SLOT (verwaiste WALs)          │   │
@@ -103,11 +103,21 @@ Zeit  │  Vorgang
 
 ### 2.4 Log-Cleanup-Zyklus
 
-Da die VM keine Bestätigung vom Backup-Server erhält, wachsen die Datenbank-Transaktionslogs unbegrenzt. Der tägliche Cron-Job verhindert dies:
+Da die VM keine Bestätigung vom Backup-Server erhält, wachsen die Datenbank-Transaktionslogs unbegrenzt. Der tägliche, gestaffelte Cron-Job verhindert dies:
+
+**Zeitliche Staffelung (Staggering):** Um I/O-Lastspitzen zu vermeiden, wird die Ausführungszeit pro Host deterministisch aus der Minion-ID abgeleitet:
+
+| Parameter | Ableitung | Bereich | Slots |
+|---|---|---|---|
+| Minute | `hash(Minion-ID) % 60` | 0–59 | 60 |
+| Stunde | `1 + (hash ÷ 60) % 3` | 01–03 | 3 |
+| **Gesamt** | | **01:00–03:59** | **180 Slots** |
+
+Bei 500 Hosts ergibt das ~3 Hosts pro Slot. Für größere Umgebungen kann der Stundenbereich im Salt State auf `% 6` (6h → 360 Slots) oder `% 12` (12h → 720 Slots) erweitert werden.
 
 ```mermaid
 graph LR
-    A[Cron 01:00] --> B{MS SQL aktiv?}
+    A[Cron 01:00-03:59<br>gestaffelt] --> B{MS SQL aktiv?}
     B -->|Ja| C[ALTER DATABASE SET RECOVERY SIMPLE]
     B -->|Nein| D{MariaDB aktiv?}
     D -->|Ja| E[PURGE BINARY LOGS BEFORE 3 DAYS]

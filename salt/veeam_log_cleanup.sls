@@ -13,9 +13,11 @@ deploy_cleanup_script:
     - mode: '0700'
 
 # Einrichtung des taeglichen Cronjobs zur automatischen Ausfuehrung um 01:00 Uhr
+# Ausgabe wird ins Logfile umgeleitet (nicht nach /dev/null), damit Fehler
+# sichtbar bleiben und ueber Uyuni/Logwatch ausgewertet werden koennen.
 configure_log_cleanup_cron:
   cron.present:
-    - name: /usr/local/bin/db_log_cleanup.sh > /dev/null 2>&1
+    - name: /usr/local/bin/db_log_cleanup.sh >> /var/log/db-cleanup.log 2>&1
     - user: root
     - minute: '0'
     - hour: '1'

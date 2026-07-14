@@ -5,6 +5,8 @@
 # ausgefuehrt. Es gibt zuvor gesperrte Datenbank-Ressourcen wieder frei.
 # =========================================================================
 
+set -e
+
 # Protokollierung des Startzeitpunkts
 echo "$(date): Post-Thaw-Skript gestartet." >> /var/log/veeam-quiesce.log
 
@@ -13,16 +15,24 @@ echo "$(date): Post-Thaw-Skript gestartet." >> /var/log/veeam-quiesce.log
 # -------------------------------------------------------------------------
 if [ -f /tmp/mysql_freeze.pid ]; then
     echo "$(date): Hebe MariaDB/MySQL-Sperre auf..." >> /var/log/veeam-quiesce.log
-    
+
     # Beendigung des im Hintergrund laufenden Sleep-Prozesses.
     # Dadurch wird die SQL-Verbindung getrennt und die Sperre aufgehoben.
     MYSQL_PID=$(cat /tmp/mysql_freeze.pid)
-    kill "$MYSQL_PID"
+
+    # Pruefung, ob die PID einem laufenden Prozess gehoert
+    if kill -0 "$MYSQL_PID" 2>/dev/null; then
+        kill "$MYSQL_PID"
+        echo "$(date): MariaDB/MySQL-Sperre erfolgreich aufgehoben." >> /var/log/veeam-quiesce.log
+    else
+        echo "$(date): Warnung - MySQL-Freeze-Prozess (PID $MYSQL_PID) lief nicht mehr." >> /var/log/veeam-quiesce.log
+    fi
+
     rm -f /tmp/mysql_freeze.pid
-    echo "$(date): MariaDB/MySQL-Sperre erfolgreich aufgehoben." >> /var/log/veeam-quiesce.log
 fi
 
 # Fuer PostgreSQL und MS SQL Server sind an dieser Stelle keine weiteren
-# Freigabeoperationen erforderlich, da keine blockierenden Locks gehalten wurden.
+# Freigabeoperationen erforderlich, da der CHECKPOINT keine blockierenden
+# Locks hinterlaesst.
 
 exit 0

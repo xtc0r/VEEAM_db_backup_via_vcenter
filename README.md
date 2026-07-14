@@ -60,6 +60,14 @@ Legen Sie die folgenden Dateien gemäß der beschriebenen Ordnerstruktur in Ihre
 #### Datei 1: `salt/veeam_consistency.sls`
 *Zielpfad auf dem Uyuni-Server:* `/srv/salt/veeam_consistency.sls`
 
-#### Datei 2: `files/pre-freeze-script.sh`
+### Datei 2: `salt/veeam_log_cleanup.sls`
+*Zielpfad auf dem Uyuni-Server:* `/srv/salt/veeam_log_cleanup.sls`
+
+#### Datei 3: `files/pre-freeze-script.sh`
 *Zielpfad auf der Ziel-VM:* `/usr/sbin/pre-freeze-script`
+
+#### Datei 4: `files/post-thaw-script`
+*Zielpfad auf der Ziel-VM:* `/usr/sbin/post-thaw-script.sh`
+
+
 

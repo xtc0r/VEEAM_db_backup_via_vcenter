@@ -69,5 +69,8 @@ Legen Sie die folgenden Dateien gemäß der beschriebenen Ordnerstruktur in Ihre
 #### Datei 4: `files/post-thaw-script`
 *Zielpfad auf der Ziel-VM:* `/usr/sbin/post-thaw-script.sh`
 
+#### Datei 5: `files/db_log_cleanup.sh`
+*Zielpfad auf der Ziel-VM:* `/usr/local/bin/db_log_cleanup.sh`
+
 
 
